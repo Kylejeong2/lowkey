@@ -52,11 +52,18 @@ export default function Home() {
                   Copy
                 </Button>
               </div>
-              <Link href={inviteLink}>
-                <Button className="w-full">
-                  Join Room
+              <div className="flex space-x-2">
+                <Link href={inviteLink} className="flex-1">
+                  <Button className="w-full">
+                    Join Room
+                  </Button>
+                </Link>
+                <Link href="/" className="flex-1">
+                  <Button onClick={generateInviteLink} className="w-full bg-green-500 hover:bg-green-700">
+                    Regenerate Room
                 </Button>
-              </Link>
+                </Link>
+              </div>
             </div>
           )}
         </CardContent>

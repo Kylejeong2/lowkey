@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { v4 as uuidv4 } from 'uuid' 
-import { ImageIcon, MicIcon } from 'lucide-react'
+import { ImageIcon, MicIcon, LinkIcon } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { useRouter } from 'next/navigation'
+import { toast } from '@/components/ui/use-toast'
 
 type ChatMessage = {
   id: number
@@ -234,6 +235,23 @@ export default function ChatComponent({ id: roomId }: Props) {
     }
   }, [chatState.connectedUsers, router])
 
+  const copyInviteLink = () => {
+    const inviteLink = `${window.location.origin}/join/${roomId}`;
+    navigator.clipboard.writeText(inviteLink).then(() => {
+      toast({
+        title: "Invite link copied!",
+        description: "The invite link has been copied to your clipboard.",
+      });
+    }).catch(err => {
+      console.error('Failed to copy: ', err);
+      toast({
+        title: "Failed to copy",
+        description: "An error occurred while copying the invite link.",
+        variant: "destructive",
+      });
+    });
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-100">
       <header className="bg-white p-4 shadow flex justify-between items-center">
@@ -258,6 +276,21 @@ export default function ChatComponent({ id: roomId }: Props) {
             <MicIcon className="w-4 h-4 mr-2" />
             <Switch checked={settings.allowAudio} onCheckedChange={(checked) => setSettings(prev => ({ ...prev, allowAudio: checked }))} />
           </div>
+          <Button 
+            onClick={(event) => {
+              copyInviteLink();
+              const button = event.currentTarget as HTMLButtonElement;
+              const originalText = button.textContent || 'Copy Invite Link';
+              button.textContent = 'Copied!';
+              setTimeout(() => {
+                button.textContent = originalText;
+              }, 2000);
+            }} 
+            className="flex items-center"
+          >
+            <LinkIcon className="w-4 h-4 mr-2" />
+            Copy Invite Link
+          </Button>
         </div>
       </header>
       
@@ -304,7 +337,7 @@ export default function ChatComponent({ id: roomId }: Props) {
             onChange={handleInputChange}
             disabled={!connectionState.isConnected || chatState.connectedUsers > 2} // if someone guesses link URL somehow, it locks the room and the joining user won't see any messages, + notifies current users if something bad happens like a 3rd user joins.
           />
-          <Button type="submit" disabled={!connectionState.isConnected || chatState.connectedUsers > 2}>Send</Button>
+          <Button className='bg-blue-500' type="submit" disabled={!connectionState.isConnected || chatState.connectedUsers > 2}>Send</Button>
         </form>
       </div>
     </div>
