@@ -8,11 +8,11 @@ import { v4 as uuidv4 } from 'uuid'
 import { ImageIcon, MicIcon } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 
-type Message = {
+type ChatMessage = {
   id: number
   text: string
   sender: 'user' | 'other' | 'system'
-  type: 'message' | 'pong'
+  type: 'chat' | 'system'
   senderId: string
 }
 
@@ -20,46 +20,60 @@ type Props = {
   id: string
 }
 
+type WebSocketMessage = {
+  type: 'chat' | 'system' | 'pong' | 'user_count' | 'typing'
+  count?: number
+  id?: number
+  text?: string
+  senderId?: string
+  isTyping?: boolean
+}
+
 interface CustomWebSocket extends WebSocket {
   closeIntentionally?: boolean;
 }
 
-export default function ChatComponent({ id }: Props) {
-  const [messages, setMessages] = useState<Message[]>([])
+export default function ChatComponent({ id: roomId }: Props) {
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputMessage, setInputMessage] = useState('')
-  const [isConnected, setIsConnected] = useState(false)
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [reconnectAttempts, setReconnectAttempts] = useState(0)
+  const [connectionState, setConnectionState] = useState({
+    isConnected: false,
+    isConnecting: false,
+    reconnectAttempts: 0,
+  })
+  const [chatState, setChatState] = useState({
+    senderId: '',
+    connectedUsers: 0,
+    isOtherUserTyping: false,
+    lastPongTime: Date.now(),
+  })
+  const [settings, setSettings] = useState({
+    allowImages: true,
+    allowAudio: true,
+  })
+
   const maxReconnectAttempts = 5
-  const [roomId] = useState(id)
   const wsRef = useRef<CustomWebSocket | null>(null)
-  const [heartbeatInterval, setHeartbeatInterval] = useState<NodeJS.Timeout | null>(null);
-  const [senderId, setSenderId] = useState<string>('')
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [allowImages, setAllowImages] = useState(true)
-  const [allowAudio, setAllowAudio] = useState(true)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
 
-  // Generate a unique senderId when the component mounts
+  // Generate and set senderId when the component mounts
   useEffect(() => {
-    const newSenderId = uuidv4() + uuidv4() + uuidv4() + uuidv4() // make it longer
-    setSenderId(newSenderId)
-
-    // Clean up function to "delete" the senderId when the component unmounts
+    const newSenderId = uuidv4()
+    setChatState(prev => ({ ...prev, senderId: newSenderId }))
+    
+    // Clean up function to reset senderId when component unmounts
     return () => {
-      setSenderId('')
+      setChatState(prev => ({ ...prev, senderId: '' }))
     }
   }, [])
 
-  const sendHeartbeat = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'heartbeat' }));
-    }
-  }, []);
-
   const connectWebSocket = useCallback(() => {
-    if (isConnecting || isConnected || reconnectAttempts >= maxReconnectAttempts) return;
+    if (connectionState.isConnecting || connectionState.isConnected || connectionState.reconnectAttempts >= maxReconnectAttempts) return;
 
-    setIsConnecting(true);
+    setConnectionState(prev => ({ ...prev, isConnecting: true }));
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = process.env.NEXT_PUBLIC_WS_URL || 'localhost:3001';
@@ -69,114 +83,146 @@ export default function ChatComponent({ id }: Props) {
     
     const ws = new WebSocket(wsUrl) as CustomWebSocket;
 
-    ws.onopen = (event) => {
-      console.log('WebSocket connection opened:', event);
-      setIsConnected(true);
-      setIsConnecting(false);
-      setReconnectAttempts(0);
+    ws.onopen = () => {
+      setConnectionState({ isConnected: true, isConnecting: false, reconnectAttempts: 0 });
       wsRef.current = ws;
+      setChatState(prev => ({ ...prev, lastPongTime: Date.now() }));
       
-      // Set up heartbeat interval
-      const interval = setInterval(() => {
+      // Send init message with senderId
+      ws.send(JSON.stringify({ type: 'init', senderId: chatState.senderId }));
+      
+      heartbeatIntervalRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'heartbeat' }));
         }
-      }, 15000); // Send heartbeat every 15 seconds
-      setHeartbeatInterval(interval);
+      }, 15000);
     };
 
-    ws.onerror = (event) => {
-      console.error('WebSocket error event:', event);
-      setIsConnected(false);
-      setIsConnecting(false);
+    ws.onerror = () => {
+      setConnectionState(prev => ({ ...prev, isConnected: false, isConnecting: false }));
     };
 
     ws.onmessage = (event) => {
-      console.log('WebSocket message received:', event.data);
       try {
-        const message: Message = JSON.parse(event.data);
+        const message: WebSocketMessage = JSON.parse(event.data);
         if (message.type === 'pong') {
-          console.log('Received pong from server');
-          return;
+          setChatState(prev => ({ ...prev, lastPongTime: Date.now() }));
+        } else if (message.type === 'user_count') {
+          setChatState(prev => ({ ...prev, connectedUsers: message.count || 0 }));
+        } else if (message.type === 'typing') {
+          setChatState(prev => ({ ...prev, isOtherUserTyping: message.isTyping || false }));
+        } else {
+          const chatMessage = message as ChatMessage;
+          setMessages((prevMessages) => {
+            if (prevMessages.some(m => m.id === chatMessage.id)) {
+              return prevMessages;
+            }
+            return [...prevMessages, chatMessage];
+          });
         }
-        setMessages((prevMessages) => {
-          if (prevMessages.some(m => m.id === message.id)) {
-            return prevMessages;
-          }
-          return [...prevMessages, message];
-        });
       } catch (error) {
         console.error('Error parsing message:', error);
       }
     };
 
     ws.onclose = (event) => {
-      console.log('WebSocket connection closed:', event);
-      setIsConnected(false);
-      setIsConnecting(false);
+      setConnectionState(prev => ({ ...prev, isConnected: false, isConnecting: false }));
       wsRef.current = null;
       
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        setHeartbeatInterval(null);
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
       }
       
       if (event.reason === 'room_full') {
         window.location.href = '/error?reason=room_full';
-      } else if (!ws.closeIntentionally && reconnectAttempts < maxReconnectAttempts) {
-        console.log(`Attempting to reconnect... (Attempt ${reconnectAttempts + 1})`);
-        setReconnectAttempts(prev => prev + 1);
+      } else if (!ws.closeIntentionally && connectionState.reconnectAttempts < maxReconnectAttempts) {
+        setConnectionState(prev => ({ ...prev, reconnectAttempts: prev.reconnectAttempts + 1 }));
         setTimeout(connectWebSocket, 5000);
       }
     };
 
     return ws;
-  }, [roomId, senderId, heartbeatInterval, isConnecting, isConnected, reconnectAttempts, maxReconnectAttempts]);
+  }, [roomId, connectionState, chatState.senderId, maxReconnectAttempts]);
 
   useEffect(() => {
-    if (!isConnected && !isConnecting && reconnectAttempts < maxReconnectAttempts) {
+    if (chatState.senderId && !connectionState.isConnected && !connectionState.isConnecting && connectionState.reconnectAttempts < maxReconnectAttempts) {
       const ws = connectWebSocket();
 
       return () => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-          console.log('Closing WebSocket connection intentionally');
           ws.closeIntentionally = true;
           ws.close();
         }
-        if (heartbeatInterval) {
-          clearInterval(heartbeatInterval);
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current);
         }
       };
     }
-  }, [connectWebSocket, isConnected, isConnecting, reconnectAttempts, maxReconnectAttempts]);
+  }, [connectWebSocket, connectionState, maxReconnectAttempts, chatState.senderId]);
 
-  // Add this useEffect to focus the input
   useEffect(() => {
-    if (isConnected && inputRef.current) {
+    const checkServerConnection = setInterval(() => {
+      if (Date.now() - chatState.lastPongTime > 45000) {
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+        connectWebSocket();
+      }
+    }, 15000);
+
+    return () => clearInterval(checkServerConnection);
+  }, [chatState.lastPongTime, connectWebSocket]);
+
+  useEffect(() => {
+    if (connectionState.isConnected && inputRef.current) {
       inputRef.current.focus()
     }
-  }, [isConnected])
+  }, [connectionState.isConnected])
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollAreaRef.current) {
+      const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollElement) {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, chatState.isOtherUserTyping, scrollToBottom]);
 
   const handleSendMessage = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (inputMessage.trim() && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const newMessage: Message = {
+      const newMessage: ChatMessage = {
         id: Date.now(),
         text: inputMessage,
         sender: 'user',
-        type: 'message',
-        senderId: senderId // Use the generated senderId
+        type: 'chat',
+        senderId: chatState.senderId
       };
       wsRef.current.send(JSON.stringify(newMessage));
       setInputMessage('');
-      // setMessages(prevMessages => [...prevMessages, newMessage]); // makes it double?
+      scrollToBottom();
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleSendMessage();
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputMessage(e.target.value);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'typing', isTyping: true, senderId: chatState.senderId }));
+      
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      
+      typingTimeoutRef.current = setTimeout(() => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'typing', isTyping: false, senderId: chatState.senderId }));
+        }
+      }, 1000);
     }
   };
 
@@ -186,44 +232,58 @@ export default function ChatComponent({ id }: Props) {
         <h1 className="text-xl font-bold">Shh</h1>
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
-            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-              {isConnected ? 'Connected' : 'Disconnected'}
+            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${connectionState.isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+              {connectionState.isConnected ? 'Connected' : 'Disconnected'}
+            </span>
+            <span className="px-2 py-1 bg-blue-200 rounded-full text-xs font-semibold">
+              Users: {chatState.connectedUsers}
             </span>
             <span className="px-2 py-1 bg-gray-200 rounded-full text-xs font-semibold">
-              Room: {roomId}
+              Room: {roomId.substring(0, 10)}...
             </span>
           </div>
           <div className="flex items-center">
             <ImageIcon className="w-4 h-4 mr-2" /> 
-            <Switch checked={allowImages} onCheckedChange={setAllowImages} />
+            <Switch checked={settings.allowImages} onCheckedChange={(checked) => setSettings(prev => ({ ...prev, allowImages: checked }))} />
           </div>
           <div className="flex items-center">
             <MicIcon className="w-4 h-4 mr-2" />
-            <Switch checked={allowAudio} onCheckedChange={setAllowAudio} />
+            <Switch checked={settings.allowAudio} onCheckedChange={(checked) => setSettings(prev => ({ ...prev, allowAudio: checked }))} />
           </div>
         </div>
       </header>
       
-      <ScrollArea className="flex-grow p-4">
+      <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
         {messages.map((message, index) => {
-          const isCurrentUser = message.senderId === senderId;
+          const isCurrentUser = message.senderId === chatState.senderId;
           return (
             <div key={`${message.id}-${index}`} className={`mb-4 flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[70%] rounded-lg p-3 ${
-                isCurrentUser 
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-200 text-black'
+                message.type === 'system'
+                  ? 'bg-yellow-200 text-black'
+                  : isCurrentUser 
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-200 text-black'
               }`}>
-                {!isCurrentUser && (
-                  <div className="flex items-center mb-1">
-                    {/* <p className="font-semibold text-sm">{message.senderId.slice(0, 8)}</p> */}
-                  </div>
-                )}
                 <p className="text-sm">{message.text}</p>
               </div>
             </div>
           );
         })}
+        {chatState.isOtherUserTyping && (
+          <div className="flex justify-start mb-4">
+            <div className="bg-gray-200 rounded-lg p-3">
+              <div className="flex space-x-2 items-center">
+                <span className="text-sm text-gray-500">Typing</span>
+                <div className="flex space-x-1">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </ScrollArea>
       
       <div className="p-4 bg-white">
@@ -233,11 +293,10 @@ export default function ChatComponent({ id }: Props) {
             type="text"
             placeholder="Type a message..."
             value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyDown={handleKeyPress}
-            disabled={!isConnected}
+            onChange={handleInputChange}
+            disabled={!connectionState.isConnected || chatState.connectedUsers > 2}
           />
-          <Button type="submit" disabled={!isConnected}>Send</Button>
+          <Button type="submit" disabled={!connectionState.isConnected || chatState.connectedUsers > 2}>Send</Button>
         </form>
       </div>
     </div>

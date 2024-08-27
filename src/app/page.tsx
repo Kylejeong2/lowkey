@@ -11,7 +11,7 @@ export default function Home() {
   const [inviteLink, setInviteLink] = useState('')
 
   const generateInviteLink = () => {
-    const randomId = Math.random().toString(36).substring(2, 15)
+    const randomId = Array.from({ length: 128 }, () => Math.random().toString(36).substring(2)).join('');
     setInviteLink(`${process.env.NEXT_PUBLIC_APP_URL}/join/${randomId}`)
   }
 
@@ -37,7 +37,18 @@ export default function Home() {
               <p className="mb-4">Share this link with another user:</p>
               <div className="flex mb-4">
                 <Input value={inviteLink} readOnly className="flex-grow" />
-                <Button onClick={copyToClipboard} className="ml-2">
+                <Button
+                  onClick={() => {
+                    copyToClipboard();
+                    const button = document.activeElement as HTMLButtonElement;
+                    const originalText = button.textContent;
+                    button.textContent = 'Copied!';
+                    setTimeout(() => {
+                      button.textContent = originalText;
+                    }, 2000);
+                  }}
+                  className="ml-2 bg-blue-500 hover:bg-blue-700"
+                >
                   Copy
                 </Button>
               </div>

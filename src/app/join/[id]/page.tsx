@@ -44,13 +44,15 @@ export default function JoinRoom({ params }: Props) {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <Card className="w-full max-w-md">
         <CardContent className="p-6">
-          <h1 className="text-2xl font-bold text-center mb-6">Join Chat Room</h1>
+          <h1 className="text-3xl font-bold text-center mb-8 text-gray-800 tracking-tight">
+            Join Secure Chat Room
+          </h1>
           <p className="text-center mb-6">You've been invited to join a private chat room. Would you like to join?</p>
           <div className="flex justify-center space-x-4">
-            <Button onClick={handleJoin} disabled={isLoading}>
+            <Button onClick={handleJoin} className="bg-green-500 hover:bg-green-700" disabled={isLoading}>
               {isLoading ? 'Joining...' : 'Join Chat'}
             </Button>
-            <Button onClick={handleDecline} variant="destructive">
+            <Button onClick={handleDecline} variant="destructive" className="bg-red-500 hover:bg-red-700">
               Decline
             </Button>
           </div>
