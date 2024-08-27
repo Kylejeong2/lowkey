@@ -14,6 +14,10 @@ export default function ErrorPage() {
     errorMessage = 'The requested room does not exist.';
   } else if (reason === 'room_inactive') {
     errorMessage = 'This room has been inactive for too long and has been closed.';
+  } else if (reason === 'chat_interrupted') {
+    errorMessage = 'The chat was interrupted due to an unexpected number of users. Please generate a new URL and try again.';
+  } else if (reason === 'invalid_room') {
+    errorMessage = 'This is not a valid chatroom. Please check your link and try again.';
   }
 
   return (

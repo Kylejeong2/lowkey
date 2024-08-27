@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { v4 as uuidv4 } from 'uuid' 
 import { ImageIcon, MicIcon } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
+import { useRouter } from 'next/navigation'
 
 type ChatMessage = {
   id: number
@@ -51,6 +52,7 @@ export default function ChatComponent({ id: roomId }: Props) {
     allowImages: true,
     allowAudio: true,
   })
+  const router = useRouter()
 
   const maxReconnectAttempts = 5
   const wsRef = useRef<CustomWebSocket | null>(null)
@@ -226,6 +228,12 @@ export default function ChatComponent({ id: roomId }: Props) {
     }
   };
 
+  useEffect(() => {
+    if (chatState.connectedUsers > 2) {
+      router.push('/error?reason=chat_interrupted')
+    }
+  }, [chatState.connectedUsers, router])
+
   return (
     <div className="flex flex-col h-screen bg-gray-100">
       <header className="bg-white p-4 shadow flex justify-between items-center">
@@ -294,7 +302,7 @@ export default function ChatComponent({ id: roomId }: Props) {
             placeholder="Type a message..."
             value={inputMessage}
             onChange={handleInputChange}
-            disabled={!connectionState.isConnected || chatState.connectedUsers > 2}
+            disabled={!connectionState.isConnected || chatState.connectedUsers > 2} // if someone guesses link URL somehow, it locks the room and the joining user won't see any messages, + notifies current users if something bad happens like a 3rd user joins.
           />
           <Button type="submit" disabled={!connectionState.isConnected || chatState.connectedUsers > 2}>Send</Button>
         </form>
