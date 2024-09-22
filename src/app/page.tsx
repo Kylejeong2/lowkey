@@ -6,13 +6,14 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { LockIcon } from 'lucide-react'
 import Link from 'next/link'
+import { v4 as uuidv4 } from 'uuid';
 
 export default function Home() {
   const [inviteLink, setInviteLink] = useState('')
 
   const generateInviteLink = () => {
-    const randomId = Array.from({ length: 128 }, () => Math.random().toString(36).substring(2)).join('');
-    setInviteLink(`${process.env.NEXT_PUBLIC_APP_URL}/join/${randomId}`)
+    const uuid = uuidv4();
+    setInviteLink(`${process.env.NEXT_PUBLIC_APP_URL}/join/${uuid}`)
   }
 
   const copyToClipboard = () => {
@@ -24,7 +25,7 @@ export default function Home() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <Card className="w-full max-w-md">
         <CardContent className="p-6">
-          <h1 className="text-2xl font-bold text-center mb-6">Shh</h1>
+          <h1 className="text-2xl font-bold text-center mb-6">lowkey</h1>
           {!inviteLink ? (
             <div className="text-center">
               <p className="mb-4">Create a new chat room:</p>

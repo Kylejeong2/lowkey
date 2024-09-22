@@ -255,7 +255,7 @@ export default function ChatComponent({ id: roomId }: Props) {
   return (
     <div className="flex flex-col h-screen bg-gray-100">
       <header className="bg-white p-4 shadow flex justify-between items-center">
-        <h1 className="text-xl font-bold">Shh</h1>
+        <h1 className="text-xl font-bold">lowkey</h1>
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <span className={`px-2 py-1 rounded-full text-xs font-semibold ${connectionState.isConnected ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>

@@ -1,4 +1,4 @@
-# Shh
+# lowkey
 __________________________
 
 ## Getting Started
@@ -16,3 +16,7 @@ To run the application, follow these steps:
    ```
 
 3. Open your browser and navigate to `http://localhost:3000` to view the application.
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for more details.
